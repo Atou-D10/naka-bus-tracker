@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Clock, Route, AlertCircle } from "lucide-react";
+import { Clock, Route as RouteIcon, AlertCircle } from "lucide-react";
 
 export const Route = createFileRoute("/lignes")({
   head: () => ({
@@ -136,7 +136,7 @@ function LignesPage() {
                     </span>
                   </div>
                   <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <Route className="h-3.5 w-3.5" />
+                    <RouteIcon className="h-3.5 w-3.5" />
                     {line.trajet}
                   </p>
                 </div>
