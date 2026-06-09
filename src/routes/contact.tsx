@@ -144,7 +144,7 @@ function ContactPage() {
               <ul className="mt-5 space-y-5">
                 <li className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <MapPin className="h-4.5 w-4.5 text-primary" />
+                    <MapPin className="h-5 w-5 text-primary" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">Adresse</p>
@@ -158,7 +158,7 @@ function ContactPage() {
 
                 <li className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <Phone className="h-4.5 w-4.5 text-primary" />
+                    <Phone className="h-5 w-5 text-primary" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">Téléphone</p>
@@ -168,7 +168,7 @@ function ContactPage() {
 
                 <li className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <Mail className="h-4.5 w-4.5 text-primary" />
+                    <Mail className="h-5 w-5 text-primary" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">E-mail</p>
