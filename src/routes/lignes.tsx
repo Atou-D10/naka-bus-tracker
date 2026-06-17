@@ -94,7 +94,7 @@ function LignesPage() {
       const res = await fetch("https://api.dify.ai/v1/workflows/run", {
         method: "POST",
         headers: {
-          Authorization: "Bearer app-QOj58uuwe3vaTfpXUiSRjtRn",
+          Authorization: "Bearer app-lEi9PPhkxgt3CEfIcYDywcD0",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
