@@ -91,7 +91,7 @@ function LignesPage() {
     const timeout = setTimeout(() => controller.abort("timeout"), 10000);
 
     try {
-      const res = await fetch("https://api.dify.ai/v1/workflows/run", {
+      const res = await fetch("https://api.dify.ai/v1/chat-messages", {
         method: "POST",
         headers: {
           Authorization: "Bearer app-lEi9PPhkxgt3CEfIcYDywcD0",
@@ -99,6 +99,7 @@ function LignesPage() {
         },
         body: JSON.stringify({
           inputs: { query },
+          query,
           response_mode: "blocking",
           user: "user-nakabus-" + Date.now(),
         }),
@@ -106,11 +107,11 @@ function LignesPage() {
       });
       if (!res.ok) throw new Error("network");
       const json = await res.json();
-      const outputs = json?.data?.outputs;
       const text =
-        typeof outputs === "string"
-          ? outputs
-          : outputs?.text ?? outputs?.answer ?? outputs?.output ?? JSON.stringify(outputs, null, 2);
+        json?.answer ??
+        json?.data?.outputs?.text ??
+        json?.data?.outputs?.answer ??
+        (typeof json?.data?.outputs === "string" ? json.data.outputs : null);
       setAiResult(text ?? "Aucune réponse reçue.");
     } catch (err: unknown) {
       const isAbort =
