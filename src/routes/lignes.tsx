@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Clock, Route as RouteIcon, AlertCircle } from "lucide-react";
+import { Clock, Route as RouteIcon, AlertCircle, Loader2, Sparkles } from "lucide-react";
 
 export const Route = createFileRoute("/lignes")({
   head: () => ({
@@ -76,6 +76,56 @@ const busLines = [
 
 function LignesPage() {
   const [activeFilter, setActiveFilter] = useState<FilterType>("Tous");
+  const [query, setQuery] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiResult, setAiResult] = useState<string | null>(null);
+
+  const askNakaBus = async () => {
+    if (!query.trim() || aiLoading) return;
+    setAiLoading(true);
+    setAiError(null);
+    setAiResult(null);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort("timeout"), 10000);
+
+    try {
+      const res = await fetch("https://api.dify.ai/v1/workflows/run", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer app-QOj58uuwe3vaTfpXUiSRjtRn",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inputs: { query },
+          response_mode: "blocking",
+          user: "user-nakabus-" + Date.now(),
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error("network");
+      const json = await res.json();
+      const outputs = json?.data?.outputs;
+      const text =
+        typeof outputs === "string"
+          ? outputs
+          : outputs?.text ?? outputs?.answer ?? outputs?.output ?? JSON.stringify(outputs, null, 2);
+      setAiResult(text ?? "Aucune réponse reçue.");
+    } catch (err: unknown) {
+      const isAbort =
+        (err instanceof DOMException && err.name === "AbortError") ||
+        (err as { name?: string })?.name === "AbortError";
+      setAiError(
+        isAbort
+          ? "La réponse prend trop de temps — réessayez"
+          : "Service temporairement indisponible",
+      );
+    } finally {
+      clearTimeout(timeout);
+      setAiLoading(false);
+    }
+  };
 
   const filtered =
     activeFilter === "Tous"
@@ -90,6 +140,63 @@ function LignesPage() {
           <p className="mt-2 text-muted-foreground">
             Temps d'attente estimés en temps réel pour la banlieue dakaroise
           </p>
+        </div>
+
+        {/* AI assistant */}
+        <div className="mb-8 rounded-xl border border-border bg-card p-5 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">Assistant NakaBus</h2>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") askNakaBus();
+              }}
+              placeholder="Posez votre question sur votre trajet (ex: bus Pikine vers Plateau 7h30)..."
+              className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              disabled={aiLoading}
+            />
+            <button
+              onClick={askNakaBus}
+              disabled={aiLoading || !query.trim()}
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {aiLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Recherche...
+                </>
+              ) : (
+                <>Demander à NakaBus 🚌</>
+              )}
+            </button>
+          </div>
+
+          {(aiLoading || aiResult || aiError) && (
+            <div className="mt-4">
+              {aiLoading && (
+                <div className="flex items-center gap-2 rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  Consultation de l'assistant en cours...
+                </div>
+              )}
+              {!aiLoading && aiError && (
+                <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{aiError}</span>
+                </div>
+              )}
+              {!aiLoading && aiResult && (
+                <div className="whitespace-pre-wrap rounded-md bg-muted px-4 py-3 text-sm text-foreground">
+                  {aiResult}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Filters */}
