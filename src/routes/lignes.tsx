@@ -98,10 +98,9 @@ function LignesPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          inputs: {},
+          inputs: { query },
           query,
           response_mode: "blocking",
-          conversation_id: "",
           user: "user-nakabus-" + Date.now(),
         }),
         signal: controller.signal,
