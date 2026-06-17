@@ -86,6 +86,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:description", content: "Horaires et temps d'attente des bus de la banlieue dakaroise en temps réel." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "NakaBus" },
+      { name: "twitter:description", content: "Horaires et temps d'attente des bus de la banlieue dakaroise en temps réel." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/24b14e56-bf3e-4191-8302-b778617ebad6/id-preview-322585bc--d0a92bca-0798-4774-8615-e081f68ba5dc.lovable.app-1781032006585.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/24b14e56-bf3e-4191-8302-b778617ebad6/id-preview-322585bc--d0a92bca-0798-4774-8615-e081f68ba5dc.lovable.app-1781032006585.png" },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
