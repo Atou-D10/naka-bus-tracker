@@ -82,6 +82,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "NakaBus" },
       { name: "description", content: "Horaires et temps d'attente des bus de la banlieue dakaroise en temps réel." },
       { name: "author", content: "NakaBus" },
+      { name: "theme-color", content: "#0B5E2F" },
       { property: "og:title", content: "NakaBus" },
       { property: "og:description", content: "Horaires et temps d'attente des bus de la banlieue dakaroise en temps réel." },
       { property: "og:type", content: "website" },
@@ -92,6 +93,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/24b14e56-bf3e-4191-8302-b778617ebad6/id-preview-322585bc--d0a92bca-0798-4774-8615-e081f68ba5dc.lovable.app-1781032006585.png" },
     ],
     links: [
+      { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" },
@@ -120,6 +122,14 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js").catch((error) => {
+        console.error("Service worker registration failed:", error);
+      });
+    }
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
