@@ -7,16 +7,9 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
-  // Enable Nitro so TanStack Start runs the post-build prerender
-  // and emits static HTML pages into `dist/client` for static hosting.
-  nitro: true,
-
   tanstackStart: {
-    server: {
-      entry: "server",
-    },
-    prerender: {
-      routes: ["/", "/lignes", "/terrain", "/contact"],
-    },
+    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
+    // nitro/vite builds from this
+    server: { entry: "server" },
   },
 });
