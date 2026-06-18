@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TerrainRouteImport } from './routes/terrain'
 import { Route as LignesRouteImport } from './routes/lignes'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as IndexRouteImport } from './routes/index'
 
+const TerrainRoute = TerrainRouteImport.update({
+  id: '/terrain',
+  path: '/terrain',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LignesRoute = LignesRouteImport.update({
   id: '/lignes',
   path: '/lignes',
@@ -33,34 +39,45 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/contact': typeof ContactRoute
   '/lignes': typeof LignesRoute
+  '/terrain': typeof TerrainRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/contact': typeof ContactRoute
   '/lignes': typeof LignesRoute
+  '/terrain': typeof TerrainRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/contact': typeof ContactRoute
   '/lignes': typeof LignesRoute
+  '/terrain': typeof TerrainRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/contact' | '/lignes'
+  fullPaths: '/' | '/contact' | '/lignes' | '/terrain'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/contact' | '/lignes'
-  id: '__root__' | '/' | '/contact' | '/lignes'
+  to: '/' | '/contact' | '/lignes' | '/terrain'
+  id: '__root__' | '/' | '/contact' | '/lignes' | '/terrain'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ContactRoute: typeof ContactRoute
   LignesRoute: typeof LignesRoute
+  TerrainRoute: typeof TerrainRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/terrain': {
+      id: '/terrain'
+      path: '/terrain'
+      fullPath: '/terrain'
+      preLoaderRoute: typeof TerrainRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/lignes': {
       id: '/lignes'
       path: '/lignes'
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ContactRoute: ContactRoute,
   LignesRoute: LignesRoute,
+  TerrainRoute: TerrainRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

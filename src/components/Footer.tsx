@@ -26,6 +26,9 @@ export function Footer() {
                 <Link to="/lignes" className="hover:text-foreground transition-colors">Lignes</Link>
               </li>
               <li>
+                <Link to="/terrain" className="hover:text-foreground transition-colors">Terrain</Link>
+              </li>
+              <li>
                 <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
               </li>
             </ul>
