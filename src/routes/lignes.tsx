@@ -77,10 +77,20 @@ const busLines = [
 
 function LignesPage() {
   const [activeFilter, setActiveFilter] = useState<FilterType>("Tous");
+  const [departQuery, setDepartQuery] = useState("");
+  const [arriveeQuery, setArriveeQuery] = useState("");
   const [query, setQuery] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiResult, setAiResult] = useState<string | null>(null);
+
+  const linesWithStops = busLines.map((line) => {
+    const [depart, arrivee] = line.trajet.split("→").map((value) => value.trim());
+    return { ...line, depart, arrivee };
+  });
+
+  const departSuggestions = Array.from(new Set(linesWithStops.map((line) => line.depart))).sort();
+  const arriveeSuggestions = Array.from(new Set(linesWithStops.map((line) => line.arrivee))).sort();
 
   const askNakaBus = async () => {
     if (!query.trim() || aiLoading) return;
@@ -112,10 +122,24 @@ function LignesPage() {
     }
   };
 
-  const filtered =
+  const filteredByType =
     activeFilter === "Tous"
-      ? busLines
-      : busLines.filter((l) => l.type === activeFilter);
+      ? linesWithStops
+      : linesWithStops.filter((l) => l.type === activeFilter);
+
+  const filteredByRoute = filteredByType.filter((line) => {
+    const departMatches = line.depart
+      .toLowerCase()
+      .includes(departQuery.trim().toLowerCase());
+    const arriveeMatches = line.arrivee
+      .toLowerCase()
+      .includes(arriveeQuery.trim().toLowerCase());
+    return departMatches && arriveeMatches;
+  });
+
+  const hasSearch = departQuery.trim() || arriveeQuery.trim();
+
+  const displayedLines = hasSearch ? filteredByRoute : filteredByType;
 
   return (
     <div className="px-4 pt-24 pb-16 sm:px-6 lg:px-8">
@@ -184,6 +208,64 @@ function LignesPage() {
           )}
         </div>
 
+        {/* Search trajet */}
+        <div className="mb-6 rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-4 space-y-2 text-sm text-foreground sm:flex sm:items-center sm:justify-between sm:space-y-0">
+            <div>
+              <p className="font-semibold text-foreground">Recherche de trajet</p>
+              <p className="text-muted-foreground">Filtrez par départ et arrivée sans appel réseau.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setDepartQuery("");
+                setArriveeQuery("");
+              }}
+              className="rounded-full border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+            >
+              Réinitialiser
+            </button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-foreground/80">
+                Départ
+              </span>
+              <input
+                list="depart-suggestions"
+                value={departQuery}
+                onChange={(e) => setDepartQuery(e.target.value)}
+                placeholder="Ex: Pikine Est"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-[#0B5E2F] focus:outline-none focus:ring-1 focus:ring-[#0B5E2F]"
+              />
+              <datalist id="depart-suggestions">
+                {departSuggestions.map((item) => (
+                  <option key={item} value={item} />
+                ))}
+              </datalist>
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-foreground/80">
+                Arrivée
+              </span>
+              <input
+                list="arrivee-suggestions"
+                value={arriveeQuery}
+                onChange={(e) => setArriveeQuery(e.target.value)}
+                placeholder="Ex: Plateau"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-[#0B5E2F] focus:outline-none focus:ring-1 focus:ring-[#0B5E2F]"
+              />
+              <datalist id="arrivee-suggestions">
+                {arriveeSuggestions.map((item) => (
+                  <option key={item} value={item} />
+                ))}
+              </datalist>
+            </label>
+          </div>
+        </div>
+
         {/* Filters */}
         <div className="mb-8 flex flex-wrap gap-2">
           {filters.map((f) => (
@@ -203,56 +285,62 @@ function LignesPage() {
 
         {/* List */}
         <div className="space-y-4">
-          {filtered.map((line) => (
-            <div
-              key={line.id}
-              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="flex items-start gap-4">
-                <div
-                  className={`mt-0.5 h-3 w-3 shrink-0 rounded-full ${
-                    line.statut === "Disponible" ? "bg-chart-3" : "bg-destructive"
-                  }`}
-                />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-foreground">{line.nom}</span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        line.statut === "Disponible"
-                          ? "bg-chart-3/15 text-chart-3"
-                          : "bg-destructive/15 text-destructive"
-                      }`}
-                    >
-                      {line.statut}
-                    </span>
+          {displayedLines.length === 0 ? (
+            <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-foreground shadow-sm">
+              Aucune ligne trouvée pour ce trajet.
+            </div>
+          ) : (
+            displayedLines.map((line) => (
+              <div
+                key={line.id}
+                className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex items-start gap-4">
+                  <div
+                    className={`mt-0.5 h-3 w-3 shrink-0 rounded-full ${
+                      line.statut === "Disponible" ? "bg-chart-3" : "bg-destructive"
+                    }`}
+                  />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">{line.nom}</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          line.statut === "Disponible"
+                            ? "bg-chart-3/15 text-chart-3"
+                            : "bg-destructive/15 text-destructive"
+                        }`}
+                      >
+                        {line.statut}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <RouteIcon className="h-3.5 w-3.5" />
+                      {line.trajet}
+                    </p>
                   </div>
-                  <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <RouteIcon className="h-3.5 w-3.5" />
-                    {line.trajet}
-                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 pl-7 sm:pl-0">
+                  {line.statut === "Disponible" && line.attente ? (
+                    <>
+                      <Clock className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-semibold text-primary">
+                        {line.attente} d'attente
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                      <span className="text-sm font-medium text-destructive">
+                        Service interrompu
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
-
-              <div className="flex items-center gap-2 pl-7 sm:pl-0">
-                {line.statut === "Disponible" && line.attente ? (
-                  <>
-                    <Clock className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-semibold text-primary">
-                      {line.attente} d'attente
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="h-4 w-4 text-destructive" />
-                    <span className="text-sm font-medium text-destructive">
-                      Service interrompu
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>
