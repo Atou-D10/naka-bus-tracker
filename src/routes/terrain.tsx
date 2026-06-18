@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2, AlertCircle, ClipboardList } from "lucide-react";
 import { callDifyAPI } from "../lib/dify-config";
+import { createTerrainSignalement, saveSignalement } from "../lib/signalements";
 
 export const Route = createFileRoute("/terrain")({
   head: () => ({
@@ -43,7 +44,10 @@ function TerrainPage() {
           userId: "agent-terrain-nakabus",
         }
       );
-      setResult(answer ?? "Aucune réponse reçue.");
+      const returnedAnswer = answer ?? "Aucune réponse reçue.";
+      setResult(returnedAnswer);
+      const signalement = createTerrainSignalement(conditions.trim(), returnedAnswer);
+      saveSignalement(signalement);
     } catch (err: unknown) {
       const isAbort =
         (err instanceof DOMException && err.name === "AbortError") ||

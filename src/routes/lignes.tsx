@@ -3,7 +3,31 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Clock, Route as RouteIcon, AlertCircle, Loader2, Sparkles } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import { toast } from "sonner";
 import { callDifyAPI } from "../lib/dify-config";
+import {
+  buildWhatsAppUrl,
+  getSubscriptionForLine,
+  isLineAlreadyNotified,
+  loadSubscriptions,
+  normalizeWhatsAppNumber,
+  saveSubscription,
+  Subscription,
+} from "../lib/subscriptions";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import {
+  type Signalement,
+  clearSignalements,
+  formatRelativeTime,
+  loadSignalements,
+} from "../lib/signalements";
 
 export const Route = createFileRoute("/lignes")({
   head: () => ({
@@ -127,6 +151,71 @@ function LignesPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiResult, setAiResult] = useState<string | null>(null);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [modalLine, setModalLine] = useState<BusLine | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [whatsappInput, setWhatsappInput] = useState("");
+  const [whatsappError, setWhatsappError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSubscriptions(loadSubscriptions());
+  }, []);
+
+  const isProblematicStatus = (statut: string) => /perturb[ée]|indisponible/i.test(statut);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const problematicSubscriptions = subscriptions
+      .map((subscription) => {
+        const line = linesWithStops.find((lineItem) => lineItem.nom === subscription.ligne);
+        return line && isProblematicStatus(line.statut) ? { subscription, line } : null;
+      })
+      .filter(Boolean) as { subscription: Subscription; line: BusLine }[];
+
+    problematicSubscriptions.forEach(({ subscription, line }) => {
+      if (!isLineAlreadyNotified(line.nom)) {
+        window.open(buildWhatsAppUrl(subscription.whatsapp, line.nom, line.statut, line.depart), "_blank", "noreferrer");
+        isLineAlreadyNotified(line.nom); // no-op, left for clarity
+      }
+    });
+  }, [subscriptions]);
+
+  const openSubscribeDialog = (line: BusLine) => {
+    setModalLine(line);
+    setWhatsappInput("");
+    setWhatsappError(null);
+    setIsDialogOpen(true);
+  };
+
+  const handleSubscribe = () => {
+    if (!modalLine) return;
+    const normalized = normalizeWhatsAppNumber(whatsappInput);
+    if (!normalized) {
+      setWhatsappError("Format requis : +221 XX XXX XX XX");
+      return;
+    }
+
+    saveSubscription({ ligne: modalLine.nom, whatsapp: normalized });
+    setSubscriptions(loadSubscriptions());
+    toast.success(`✅ Vous suivez ${modalLine.nom}`);
+    setIsDialogOpen(false);
+
+    if (isProblematicStatus(modalLine.statut)) {
+      window.open(buildWhatsAppUrl(normalized, modalLine.nom, modalLine.statut, modalLine.depart), "_blank", "noreferrer");
+    }
+  };
+
+  const isSubscribed = (line: BusLine) => subscriptions.some((item) => item.ligne === line.nom);
+  const [signalements, setSignalements] = useState<Signalement[]>([]);
+
+  useEffect(() => {
+    setSignalements(loadSignalements().slice(0, 5));
+  }, []);
+
+  const handleClearSignalements = () => {
+    clearSignalements();
+    setSignalements([]);
+  };
 
   const linesWithStops = busLines.map((line) => {
     const [depart, arrivee] = line.trajet.split("→").map((value) => value.trim());
@@ -356,6 +445,68 @@ function LignesPage() {
           </div>
         </div>
 
+        <div className="mb-8 rounded-xl border border-border bg-[#F9FAFB] p-5 shadow-sm">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">📡 Derniers signalements terrain</h2>
+              <p className="text-sm text-muted-foreground">
+                Les cinq derniers signalements enregistrés depuis la saisie terrain.
+              </p>
+            </div>
+          </div>
+
+          {signalements.length === 0 ? (
+            <div className="rounded-2xl border border-border bg-white p-4 text-sm text-muted-foreground">
+              Aucun signalement récent — soyez le premier à signaler.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {signalements.map((signalement) => {
+                const isAlert = /perturbé|indisponible/i.test(signalement.statut);
+                return (
+                  <div
+                    key={signalement.id}
+                    className="rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-5"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex items-start gap-3">
+                        <span
+                          className={`mt-1 h-3.5 w-3.5 shrink-0 rounded-full ${
+                            isAlert ? "bg-destructive" : "bg-emerald-500"
+                          }`}
+                        />
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">
+                            {signalement.heure} · {signalement.ligne} · {signalement.arret} · {signalement.retard}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Source : {signalement.source}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {formatRelativeTime(signalement.id)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {signalements.length > 0 && (
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={handleClearSignalements}
+                className="text-sm font-medium text-muted-foreground transition hover:text-foreground"
+              >
+                🗑 Effacer les signalements
+              </button>
+            </div>
+          )}
+        </div>
+
         {viewMode === "map" ? (
           <div className="mb-8 rounded-xl border border-border bg-card p-4 shadow-sm">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -465,22 +616,36 @@ function LignesPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pl-7 sm:pl-0">
-                    {line.statut === "Disponible" && line.attente ? (
-                      <>
-                        <Clock className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-semibold text-primary">
-                          {line.attente} d'attente
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="h-4 w-4 text-destructive" />
-                        <span className="text-sm font-medium text-destructive">
-                          Service interrompu
-                        </span>
-                      </>
-                    )}
+                  <div className="flex flex-col gap-3 sm:items-end sm:justify-between">
+                    <div className="flex items-center gap-2 pl-7 sm:pl-0">
+                      {line.statut === "Disponible" && line.attente ? (
+                        <>
+                          <Clock className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-semibold text-primary">
+                            {line.attente} d'attente
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="h-4 w-4 text-destructive" />
+                          <span className="text-sm font-medium text-destructive">
+                            Service interrompu
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openSubscribeDialog(line)}
+                      disabled={isSubscribed(line)}
+                      className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                        isSubscribed(line)
+                          ? "cursor-not-allowed bg-slate-200 text-slate-600"
+                          : "bg-[#0B5E2F] text-white hover:bg-emerald-700"
+                      }`}
+                    >
+                      {isSubscribed(line) ? "✅ Suivi" : "🔔 Suivre cette ligne"}
+                    </button>
                   </div>
                 </div>
               ))
