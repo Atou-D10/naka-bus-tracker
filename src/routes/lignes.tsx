@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Clock, Route as RouteIcon, AlertCircle, Loader2, Sparkles } from "lucide-react";
+import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 import { callDifyAPI } from "../lib/dify-config";
 
 export const Route = createFileRoute("/lignes")({
@@ -24,54 +26,95 @@ const filters = [
 
 type FilterType = (typeof filters)[number];
 
-const busLines = [
+type StopCoordinates = {
+  lat: number;
+  lng: number;
+};
+
+type BusLine = {
+  id: number;
+  nom: string;
+  type: (typeof filters)[number];
+  trajet: string;
+  attente: string | null;
+  statut: string;
+  departCoord: StopCoordinates;
+  arriveeCoord: StopCoordinates;
+};
+
+const stopCoordinates: Record<string, StopCoordinates> = {
+  "Pikine Est": { lat: 14.7549, lng: -17.3902 },
+  Plateau: { lat: 14.6708, lng: -17.4348 },
+  Thiaroye: { lat: 14.7644, lng: -17.3756 },
+  Sandaga: { lat: 14.6726, lng: -17.438 },
+  "Keur Massar": { lat: 14.7833, lng: -17.3167 },
+  Colobane: { lat: 14.6892, lng: -17.4467 },
+  "Guédiawaye": { lat: 14.7833, lng: -17.4 },
+  "Parcelles Assainies": { lat: 14.7531, lng: -17.4256 },
+  Rufisque: { lat: 14.7167, lng: -17.2667 },
+  "Liberté 6": { lat: 14.7167, lng: -17.45 },
+};
+
+const busLines: BusLine[] = [
   {
     id: 1,
     nom: "DDD Ligne 26",
-    type: "Dakar Dem Dikk" as const,
+    type: "Dakar Dem Dikk",
     trajet: "Pikine Est → Plateau",
     attente: "12 min",
-    statut: "Disponible" as const,
+    statut: "Disponible",
+    departCoord: stopCoordinates["Pikine Est"],
+    arriveeCoord: stopCoordinates["Plateau"],
   },
   {
     id: 2,
     nom: "Car Rapide 76",
-    type: "Cars Rapides" as const,
+    type: "Cars Rapides",
     trajet: "Thiaroye → Sandaga",
     attente: "8 min",
-    statut: "Disponible" as const,
+    statut: "Disponible",
+    departCoord: stopCoordinates.Thiaroye,
+    arriveeCoord: stopCoordinates.Sandaga,
   },
   {
     id: 3,
     nom: "DDD Ligne 15",
-    type: "Dakar Dem Dikk" as const,
+    type: "Dakar Dem Dikk",
     trajet: "Guédiawaye → Plateau",
     attente: null,
-    statut: "Indisponible" as const,
+    statut: "Indisponible",
+    departCoord: stopCoordinates["Guédiawaye"],
+    arriveeCoord: stopCoordinates.Plateau,
   },
   {
     id: 4,
     nom: "Ndiaga Ndiaye 101",
-    type: "Ndiaga Ndiaye" as const,
+    type: "Ndiaga Ndiaye",
     trajet: "Keur Massar → Colobane",
     attente: "5 min",
-    statut: "Disponible" as const,
+    statut: "Disponible",
+    departCoord: stopCoordinates["Keur Massar"],
+    arriveeCoord: stopCoordinates.Colobane,
   },
   {
     id: 5,
     nom: "DDD Ligne 8",
-    type: "Dakar Dem Dikk" as const,
+    type: "Dakar Dem Dikk",
     trajet: "Parcelles Assainies → Plateau",
     attente: "18 min",
-    statut: "Disponible" as const,
+    statut: "Disponible",
+    departCoord: stopCoordinates["Parcelles Assainies"],
+    arriveeCoord: stopCoordinates.Plateau,
   },
   {
     id: 6,
     nom: "Car Rapide 54",
-    type: "Cars Rapides" as const,
+    type: "Cars Rapides",
     trajet: "Rufisque → Liberté 6",
     attente: "22 min",
-    statut: "Disponible" as const,
+    statut: "Disponible",
+    departCoord: stopCoordinates.Rufisque,
+    arriveeCoord: stopCoordinates["Liberté 6"],
   },
 ];
 
@@ -79,6 +122,7 @@ function LignesPage() {
   const [activeFilter, setActiveFilter] = useState<FilterType>("Tous");
   const [departQuery, setDepartQuery] = useState("");
   const [arriveeQuery, setArriveeQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [query, setQuery] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -140,6 +184,9 @@ function LignesPage() {
   const hasSearch = departQuery.trim() || arriveeQuery.trim();
 
   const displayedLines = hasSearch ? filteredByRoute : filteredByType;
+
+  const mapLines = displayedLines.filter((line) => line.departCoord && line.arriveeCoord);
+  const dakarsCenter = { lat: 14.6937, lng: -17.4441 };
 
   return (
     <div className="px-4 pt-24 pb-16 sm:px-6 lg:px-8">
@@ -267,81 +314,179 @@ function LignesPage() {
         </div>
 
         {/* Filters */}
-        <div className="mb-8 flex flex-wrap gap-2">
-          {filters.map((f) => (
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {filters.map((f) => (
+              <button
+                key={f}
+                onClick={() => setActiveFilter(f)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  activeFilter === f
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "border border-border bg-card text-foreground hover:bg-muted"
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
             <button
-              key={f}
-              onClick={() => setActiveFilter(f)}
+              type="button"
+              onClick={() => setViewMode("list")}
               className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                activeFilter === f
+                viewMode === "list"
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "border border-border bg-card text-foreground hover:bg-muted"
               }`}
             >
-              {f}
+              Vue liste
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => setViewMode("map")}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                viewMode === "map"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "border border-border bg-card text-foreground hover:bg-muted"
+              }`}
+            >
+              Vue carte
+            </button>
+          </div>
         </div>
 
-        {/* List */}
-        <div className="space-y-4">
-          {displayedLines.length === 0 ? (
-            <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-foreground shadow-sm">
-              Aucune ligne trouvée pour ce trajet.
+        {viewMode === "map" ? (
+          <div className="mb-8 rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Carte des arrêts</h2>
+                <p className="text-sm text-muted-foreground">
+                  Les marqueurs reflètent le filtre sélectionné et la recherche actuelle.
+                </p>
+              </div>
             </div>
-          ) : (
-            displayedLines.map((line) => (
-              <div
-                key={line.id}
-                className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md sm:flex-row sm:items-center sm:justify-between"
+            <div className="min-h-[60vh] overflow-hidden rounded-xl border border-border">
+              <MapContainer
+                center={[dakarsCenter.lat, dakarsCenter.lng]}
+                zoom={12}
+                scrollWheelZoom={false}
+                className="h-[60vh] w-full"
               >
-                <div className="flex items-start gap-4">
-                  <div
-                    className={`mt-0.5 h-3 w-3 shrink-0 rounded-full ${
-                      line.statut === "Disponible" ? "bg-chart-3" : "bg-destructive"
-                    }`}
-                  />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-foreground">{line.nom}</span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          line.statut === "Disponible"
-                            ? "bg-chart-3/15 text-chart-3"
-                            : "bg-destructive/15 text-destructive"
-                        }`}
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                {mapLines.map((line) => {
+                  const isAvailable = line.statut === "Disponible";
+                  const color = isAvailable ? "#0B5E2F" : "#dc2626";
+
+                  return (
+                    <Fragment key={line.id}>
+                      <CircleMarker
+                        center={[line.departCoord.lat, line.departCoord.lng]}
+                        pathOptions={{ color, fillColor: color, fillOpacity: 0.8 }}
+                        radius={10}
                       >
-                        {line.statut}
-                      </span>
+                        <Popup>
+                          <div className="space-y-1 text-sm">
+                            <p className="font-semibold">{line.nom}</p>
+                            <p>{line.trajet}</p>
+                            <p>
+                              <span className="font-semibold">Statut :</span> {line.statut}
+                            </p>
+                            <p>
+                              <span className="font-semibold">Attente :</span>{" "}
+                              {line.attente ?? "N/A"}
+                            </p>
+                          </div>
+                        </Popup>
+                      </CircleMarker>
+                      <CircleMarker
+                        center={[line.arriveeCoord.lat, line.arriveeCoord.lng]}
+                        pathOptions={{ color, fillColor: color, fillOpacity: 0.8 }}
+                        radius={10}
+                      >
+                        <Popup>
+                          <div className="space-y-1 text-sm">
+                            <p className="font-semibold">{line.nom}</p>
+                            <p>{line.trajet}</p>
+                            <p>
+                              <span className="font-semibold">Statut :</span> {line.statut}
+                            </p>
+                            <p>
+                              <span className="font-semibold">Attente :</span>{" "}
+                              {line.attente ?? "N/A"}
+                            </p>
+                          </div>
+                        </Popup>
+                      </CircleMarker>
+                    </Fragment>
+                  );
+                })}
+              </MapContainer>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {displayedLines.length === 0 ? (
+              <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-foreground shadow-sm">
+                Aucune ligne trouvée pour ce trajet.
+              </div>
+            ) : (
+              displayedLines.map((line) => (
+                <div
+                  key={line.id}
+                  className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`mt-0.5 h-3 w-3 shrink-0 rounded-full ${
+                        line.statut === "Disponible" ? "bg-chart-3" : "bg-destructive"
+                      }`}
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-foreground">{line.nom}</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                            line.statut === "Disponible"
+                              ? "bg-chart-3/15 text-chart-3"
+                              : "bg-destructive/15 text-destructive"
+                          }`}
+                        >
+                          {line.statut}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <RouteIcon className="h-3.5 w-3.5" />
+                        {line.trajet}
+                      </p>
                     </div>
-                    <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
-                      <RouteIcon className="h-3.5 w-3.5" />
-                      {line.trajet}
-                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 pl-7 sm:pl-0">
+                    {line.statut === "Disponible" && line.attente ? (
+                      <>
+                        <Clock className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-semibold text-primary">
+                          {line.attente} d'attente
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="h-4 w-4 text-destructive" />
+                        <span className="text-sm font-medium text-destructive">
+                          Service interrompu
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 pl-7 sm:pl-0">
-                  {line.statut === "Disponible" && line.attente ? (
-                    <>
-                      <Clock className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-semibold text-primary">
-                        {line.attente} d'attente
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="h-4 w-4 text-destructive" />
-                      <span className="text-sm font-medium text-destructive">
-                        Service interrompu
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
