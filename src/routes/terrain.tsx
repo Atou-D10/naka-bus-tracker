@@ -39,6 +39,7 @@ function TerrainPage() {
         },
         body: JSON.stringify({
           inputs: {
+            query: question.trim(),
             donnees_terrain: conditions.trim(),
           },
           query: question.trim(),
@@ -65,7 +66,7 @@ function TerrainPage() {
           ? "La réponse prend trop de temps — réessayez"
           : err instanceof Error
             ? err.message
-            : "❌ Erreur — réessayer"
+            : String(err)
       );
     } finally {
       clearTimeout(timeoutId);
