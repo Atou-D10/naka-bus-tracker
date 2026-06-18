@@ -31,7 +31,7 @@ function TerrainPage() {
     const timeoutId = setTimeout(() => controller.abort("timeout"), 10000);
 
     try {
-      const res = await fetch("https://api.dify.ai/v1/workflows/run", {
+      const res = await fetch("https://api.dify.ai/v1/chat-messages", {
         method: "POST",
         headers: {
           Authorization: "Bearer app-lEi9PPhkxgt3CEfIcYDywcD0",
@@ -39,24 +39,34 @@ function TerrainPage() {
         },
         body: JSON.stringify({
           inputs: {
-            query: question.trim(),
             donnees_terrain: conditions.trim(),
           },
+          query: question.trim(),
           response_mode: "blocking",
+          conversation_id: "",
           user: "agent-terrain-nakabus",
         }),
         signal: controller.signal,
       });
 
-      if (!res.ok) throw new Error("network");
       const json = await res.json();
-      const text = json?.data?.outputs?.text ?? null;
-      setResult(text ?? "Aucune réponse reçue.");
+      if (!res.ok) {
+        const apiMessage = json?.message ?? json?.data?.message ?? null;
+        throw new Error(apiMessage || `Erreur HTTP ${res.status}`);
+      }
+      const answer = json?.answer ?? null;
+      setResult(answer ?? "Aucune réponse reçue.");
     } catch (err: unknown) {
       const isAbort =
         (err instanceof DOMException && err.name === "AbortError") ||
         (err as { name?: string })?.name === "AbortError";
-      setError(isAbort ? "❌ Erreur — réessayer" : "❌ Erreur — réessayer");
+      setError(
+        isAbort
+          ? "La réponse prend trop de temps — réessayez"
+          : err instanceof Error
+            ? err.message
+            : "❌ Erreur — réessayer"
+      );
     } finally {
       clearTimeout(timeoutId);
       setLoading(false);
