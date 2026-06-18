@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Clock, Route as RouteIcon, AlertCircle, Loader2, Sparkles } from "lucide-react";
+import { callDifyAPI } from "../lib/dify-config";
 
 export const Route = createFileRoute("/lignes")({
   head: () => ({
@@ -91,27 +92,10 @@ function LignesPage() {
     const timeout = setTimeout(() => controller.abort("timeout"), 10000);
 
     try {
-      const res = await fetch("https://api.dify.ai/v1/chat-messages", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer app-lEi9PPhkxgt3CEfIcYDywcD0",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          inputs: { query },
-          query,
-          response_mode: "blocking",
-          user: "user-nakabus-" + Date.now(),
-        }),
+      const text = await callDifyAPI(query, { query }, {
         signal: controller.signal,
+        userId: "user-nakabus-" + Date.now(),
       });
-      if (!res.ok) throw new Error("network");
-      const json = await res.json();
-      const text =
-        json?.answer ??
-        json?.data?.outputs?.text ??
-        json?.data?.outputs?.answer ??
-        (typeof json?.data?.outputs === "string" ? json.data.outputs : null);
       setAiResult(text ?? "Aucune réponse reçue.");
     } catch (err: unknown) {
       const isAbort =

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2, AlertCircle, ClipboardList } from "lucide-react";
+import { callDifyAPI } from "../lib/dify-config";
 
 export const Route = createFileRoute("/terrain")({
   head: () => ({
@@ -31,31 +32,17 @@ function TerrainPage() {
     const timeoutId = setTimeout(() => controller.abort("timeout"), 10000);
 
     try {
-      const res = await fetch("https://api.dify.ai/v1/chat-messages", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer app-lEi9PPhkxgt3CEfIcYDywcD0",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          inputs: {
-            query: question.trim(),
-            donnees_terrain: conditions.trim(),
-          },
+      const answer = await callDifyAPI(
+        question.trim(),
+        {
           query: question.trim(),
-          response_mode: "blocking",
-          conversation_id: "",
-          user: "agent-terrain-nakabus",
-        }),
-        signal: controller.signal,
-      });
-
-      const json = await res.json();
-      if (!res.ok) {
-        const apiMessage = json?.message ?? json?.data?.message ?? null;
-        throw new Error(apiMessage || `Erreur HTTP ${res.status}`);
-      }
-      const answer = json?.answer ?? null;
+          donnees_terrain: conditions.trim(),
+        },
+        {
+          signal: controller.signal,
+          userId: "agent-terrain-nakabus",
+        }
+      );
       setResult(answer ?? "Aucune réponse reçue.");
     } catch (err: unknown) {
       const isAbort =
