@@ -39,6 +39,7 @@ function TerrainPage() {
         },
         body: JSON.stringify({
           inputs: {
+            query: question.trim(),
             donnees_terrain: conditions.trim(),
           },
           query: question.trim(),
