@@ -90,7 +90,7 @@ export const normalizeWhatsAppNumber = (value: string) => {
     return "";
   }
   const rest = digits.slice(4);
-  if (rest.length !== 8) {
+  if (rest.length !== 9) {
     return "";
   }
   return `+221 ${rest.slice(0, 2)} ${rest.slice(2, 5)} ${rest.slice(5, 7)} ${rest.slice(7, 9)}`;

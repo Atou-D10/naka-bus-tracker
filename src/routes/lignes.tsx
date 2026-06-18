@@ -1,15 +1,14 @@
 import { Fragment, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Clock, Route as RouteIcon, AlertCircle, Loader2, Sparkles } from "lucide-react";
-import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
+// React-Leaflet / Leaflet are browser-only (use dynamic import to avoid SSR errors)
 import { toast } from "sonner";
 import { callDifyAPI } from "../lib/dify-config";
 import {
   buildWhatsAppUrl,
-  getSubscriptionForLine,
   isLineAlreadyNotified,
   loadSubscriptions,
+  markLineAsNotified,
   normalizeWhatsAppNumber,
   saveSubscription,
   Subscription,
@@ -142,6 +141,11 @@ const busLines: BusLine[] = [
   },
 ];
 
+const linesWithStops = busLines.map((line) => {
+  const [depart, arrivee] = line.trajet.split("→").map((value) => value.trim());
+  return { ...line, depart, arrivee };
+});
+
 function LignesPage() {
   const [activeFilter, setActiveFilter] = useState<FilterType>("Tous");
   const [departQuery, setDepartQuery] = useState("");
@@ -151,6 +155,7 @@ function LignesPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiResult, setAiResult] = useState<string | null>(null);
+  const [aiCopied, setAiCopied] = useState(false);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [modalLine, setModalLine] = useState<BusLine | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -162,23 +167,6 @@ function LignesPage() {
   }, []);
 
   const isProblematicStatus = (statut: string) => /perturb[ée]|indisponible/i.test(statut);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const problematicSubscriptions = subscriptions
-      .map((subscription) => {
-        const line = linesWithStops.find((lineItem) => lineItem.nom === subscription.ligne);
-        return line && isProblematicStatus(line.statut) ? { subscription, line } : null;
-      })
-      .filter(Boolean) as { subscription: Subscription; line: BusLine }[];
-
-    problematicSubscriptions.forEach(({ subscription, line }) => {
-      if (!isLineAlreadyNotified(line.nom)) {
-        window.open(buildWhatsAppUrl(subscription.whatsapp, line.nom, line.statut, line.depart), "_blank", "noreferrer");
-        isLineAlreadyNotified(line.nom); // no-op, left for clarity
-      }
-    });
-  }, [subscriptions]);
 
   const openSubscribeDialog = (line: BusLine) => {
     setModalLine(line);
@@ -207,9 +195,27 @@ function LignesPage() {
 
   const isSubscribed = (line: BusLine) => subscriptions.some((item) => item.ligne === line.nom);
   const [signalements, setSignalements] = useState<Signalement[]>([]);
+  const [LeafletComponents, setLeafletComponents] = useState<any>(null);
 
   useEffect(() => {
     setSignalements(loadSignalements().slice(0, 5));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let mounted = true;
+    // load CSS and react-leaflet dynamically on client only
+    void import("leaflet/dist/leaflet.css").catch(() => {});
+    import("react-leaflet")
+      .then((mod) => {
+        if (mounted) setLeafletComponents(mod);
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleClearSignalements = () => {
@@ -217,10 +223,70 @@ function LignesPage() {
     setSignalements([]);
   };
 
-  const linesWithStops = busLines.map((line) => {
-    const [depart, arrivee] = line.trajet.split("→").map((value) => value.trim());
-    return { ...line, depart, arrivee };
-  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const problematicSubscriptions = subscriptions
+      .map((subscription) => {
+        const line = linesWithStops.find((lineItem) => lineItem.nom === subscription.ligne);
+        return line && isProblematicStatus(line.statut) ? { subscription, line } : null;
+      })
+      .filter(Boolean) as { subscription: Subscription; line: BusLine }[];
+
+    problematicSubscriptions.forEach(({ subscription, line }) => {
+      if (!isLineAlreadyNotified(line.nom)) {
+        window.open(buildWhatsAppUrl(subscription.whatsapp, line.nom, line.statut, line.depart), "_blank", "noreferrer");
+        markLineAsNotified(line.nom);
+      }
+    });
+  }, [subscriptions, linesWithStops]);
+
+  const getSubscribersForLine = (ligneName: string) => {
+    if (typeof window === "undefined") return [] as Subscription[];
+    // primary source: nakabus_subscriptions via loadSubscriptions
+    const subs = loadSubscriptions().filter((s) => s.ligne === ligneName);
+
+    // legacy/alternate: check nakabus_signalements for possible subscriber entries
+    try {
+      const raw = window.localStorage.getItem("nakabus_signalements");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((item) => {
+            if (item && typeof item === "object" && typeof item.whatsapp === "string" && item.ligne === ligneName) {
+              const exists = subs.some((s) => s.whatsapp === item.whatsapp && s.ligne === item.ligne);
+              if (!exists) subs.push({ ligne: item.ligne, whatsapp: item.whatsapp });
+            }
+          });
+        }
+      }
+    } catch {
+      // ignore malformed legacy data
+    }
+
+    return subs;
+  };
+
+  const handleAlertSubscribers = (line: BusLine) => {
+    if (typeof window === "undefined") return;
+    const subs = getSubscribersForLine(line.nom);
+    if (!subs.length) {
+      toast(`Aucun abonné trouvé pour ${line.nom}`, { icon: "📭" });
+      return;
+    }
+
+    const arret = (line as any).depart ?? line.trajet.split("→")[0].trim();
+    subs.forEach((s) => {
+      try {
+        const url = buildWhatsAppUrl(s.whatsapp, line.nom, line.statut, arret);
+        window.open(url, "_blank", "noreferrer");
+      } catch (err) {
+        // ignore individual failures
+      }
+    });
+    markLineAsNotified(line.nom);
+    toast.success(`Alerte envoyée à ${subs.length} abonné(s)`);
+  };
 
   const departSuggestions = Array.from(new Set(linesWithStops.map((line) => line.depart))).sort();
   const arriveeSuggestions = Array.from(new Set(linesWithStops.map((line) => line.arrivee))).sort();
@@ -336,8 +402,32 @@ function LignesPage() {
                 </div>
               )}
               {!aiLoading && aiResult && (
-                <div className="whitespace-pre-wrap rounded-md bg-muted px-4 py-3 text-sm text-foreground">
-                  {aiResult}
+                <div>
+                  <div className="whitespace-pre-wrap rounded-md bg-muted px-4 py-3 text-sm text-foreground">
+                    {aiResult}
+                  </div>
+
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const now = new Date();
+                          const date = now.toLocaleDateString("fr-FR");
+                          const time = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+                          const content = `--- Fiche NakaBus ---\n${aiResult}\nGénéré le ${date} à ${time}\nnakabus.lovable.app`;
+                          await navigator.clipboard.writeText(content);
+                          setAiCopied(true);
+                          setTimeout(() => setAiCopied(false), 2000);
+                        } catch {
+                          setAiCopied(false);
+                        }
+                      }}
+                      className="inline-flex items-center justify-center rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-200"
+                    >
+                      {aiCopied ? "✅ Copié !" : "📋 Copier la fiche"}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -518,64 +608,68 @@ function LignesPage() {
               </div>
             </div>
             <div className="min-h-[60vh] overflow-hidden rounded-xl border border-border">
-              <MapContainer
-                center={[dakarsCenter.lat, dakarsCenter.lng]}
-                zoom={12}
-                scrollWheelZoom={false}
-                className="h-[60vh] w-full"
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                {mapLines.map((line) => {
-                  const isAvailable = line.statut === "Disponible";
-                  const color = isAvailable ? "#0B5E2F" : "#dc2626";
+              {!LeafletComponents ? (
+                <div className="flex h-[60vh] items-center justify-center text-sm text-muted-foreground">Chargement de la carte…</div>
+              ) : (
+                <LeafletComponents.MapContainer
+                  center={[dakarsCenter.lat, dakarsCenter.lng]}
+                  zoom={12}
+                  scrollWheelZoom={false}
+                  className="h-[60vh] w-full"
+                >
+                  <LeafletComponents.TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  {mapLines.map((line) => {
+                    const isAvailable = line.statut === "Disponible";
+                    const color = isAvailable ? "#0B5E2F" : "#dc2626";
 
-                  return (
-                    <Fragment key={line.id}>
-                      <CircleMarker
-                        center={[line.departCoord.lat, line.departCoord.lng]}
-                        pathOptions={{ color, fillColor: color, fillOpacity: 0.8 }}
-                        radius={10}
-                      >
-                        <Popup>
-                          <div className="space-y-1 text-sm">
-                            <p className="font-semibold">{line.nom}</p>
-                            <p>{line.trajet}</p>
-                            <p>
-                              <span className="font-semibold">Statut :</span> {line.statut}
-                            </p>
-                            <p>
-                              <span className="font-semibold">Attente :</span>{" "}
-                              {line.attente ?? "N/A"}
-                            </p>
-                          </div>
-                        </Popup>
-                      </CircleMarker>
-                      <CircleMarker
-                        center={[line.arriveeCoord.lat, line.arriveeCoord.lng]}
-                        pathOptions={{ color, fillColor: color, fillOpacity: 0.8 }}
-                        radius={10}
-                      >
-                        <Popup>
-                          <div className="space-y-1 text-sm">
-                            <p className="font-semibold">{line.nom}</p>
-                            <p>{line.trajet}</p>
-                            <p>
-                              <span className="font-semibold">Statut :</span> {line.statut}
-                            </p>
-                            <p>
-                              <span className="font-semibold">Attente :</span>{" "}
-                              {line.attente ?? "N/A"}
-                            </p>
-                          </div>
-                        </Popup>
-                      </CircleMarker>
-                    </Fragment>
-                  );
-                })}
-              </MapContainer>
+                    return (
+                      <Fragment key={line.id}>
+                        <LeafletComponents.CircleMarker
+                          center={[line.departCoord.lat, line.departCoord.lng]}
+                          pathOptions={{ color, fillColor: color, fillOpacity: 0.8 }}
+                          radius={10}
+                        >
+                          <LeafletComponents.Popup>
+                            <div className="space-y-1 text-sm">
+                              <p className="font-semibold">{line.nom}</p>
+                              <p>{line.trajet}</p>
+                              <p>
+                                <span className="font-semibold">Statut :</span> {line.statut}
+                              </p>
+                              <p>
+                                <span className="font-semibold">Attente :</span>{" "}
+                                {line.attente ?? "N/A"}
+                              </p>
+                            </div>
+                          </LeafletComponents.Popup>
+                        </LeafletComponents.CircleMarker>
+                        <LeafletComponents.CircleMarker
+                          center={[line.arriveeCoord.lat, line.arriveeCoord.lng]}
+                          pathOptions={{ color, fillColor: color, fillOpacity: 0.8 }}
+                          radius={10}
+                        >
+                          <LeafletComponents.Popup>
+                            <div className="space-y-1 text-sm">
+                              <p className="font-semibold">{line.nom}</p>
+                              <p>{line.trajet}</p>
+                              <p>
+                                <span className="font-semibold">Statut :</span> {line.statut}
+                              </p>
+                              <p>
+                                <span className="font-semibold">Attente :</span>{" "}
+                                {line.attente ?? "N/A"}
+                              </p>
+                            </div>
+                          </LeafletComponents.Popup>
+                        </LeafletComponents.CircleMarker>
+                      </Fragment>
+                    );
+                  })}
+                </LeafletComponents.MapContainer>
+              )}
             </div>
           </div>
         ) : (
@@ -634,24 +728,86 @@ function LignesPage() {
                         </>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => openSubscribeDialog(line)}
-                      disabled={isSubscribed(line)}
-                      className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                        isSubscribed(line)
-                          ? "cursor-not-allowed bg-slate-200 text-slate-600"
-                          : "bg-[#0B5E2F] text-white hover:bg-emerald-700"
-                      }`}
-                    >
-                      {isSubscribed(line) ? "✅ Suivi" : "🔔 Suivre cette ligne"}
-                    </button>
+                    <div className="flex flex-col items-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openSubscribeDialog(line)}
+                        disabled={isSubscribed(line)}
+                        className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                          isSubscribed(line)
+                            ? "cursor-not-allowed bg-slate-200 text-slate-600"
+                            : "bg-[#0B5E2F] text-white hover:bg-emerald-700"
+                        }`}
+                      >
+                        {isSubscribed(line) ? "✅ Suivi" : "🔔 Suivre cette ligne"}
+                      </button>
+
+                      {isProblematicStatus(line.statut) && (
+                        <button
+                          type="button"
+                          onClick={() => handleAlertSubscribers(line)}
+                          className="inline-flex items-center justify-center rounded-md bg-[#DC2626] px-3 py-1 text-xs font-medium text-white shadow-sm hover:brightness-95"
+                        >
+                          📣 Alerter les abonnés
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))
             )}
           </div>
         )}
+
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>🔔 Suivre une ligne</DialogTitle>
+              <DialogDescription>
+                Vous recevrez un message WhatsApp si cette ligne passe en statut Perturbé ou Indisponible.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <div>
+                <label htmlFor="whatsapp-number" className="mb-2 block text-sm font-medium text-foreground">
+                  Numéro WhatsApp
+                </label>
+                <input
+                  id="whatsapp-number"
+                  type="tel"
+                  value={whatsappInput}
+                  onChange={(e) => setWhatsappInput(e.target.value)}
+                  placeholder="+221 XX XXX XX XX"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-[#0B5E2F] focus:outline-none focus:ring-1 focus:ring-[#0B5E2F]"
+                />
+                {whatsappError ? (
+                  <p className="mt-2 text-sm text-destructive">{whatsappError}</p>
+                ) : null}
+              </div>
+              {modalLine ? (
+                <div className="rounded-xl border border-border bg-muted p-4 text-sm text-muted-foreground">
+                  Ligne sélectionnée : <span className="font-semibold text-foreground">{modalLine.nom}</span>
+                </div>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={handleSubscribe}
+                className="inline-flex items-center justify-center rounded-md bg-[#0B5E2F] px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              >
+                M'abonner
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDialogOpen(false)}
+                className="inline-flex items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
+              >
+                Annuler
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
