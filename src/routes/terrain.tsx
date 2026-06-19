@@ -1,8 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2, AlertCircle, ClipboardList } from "lucide-react";
 import { callDifyAPI } from "../lib/dify-config";
-import { createTerrainSignalement, saveSignalement } from "../lib/signalements";
+import {
+  type Signalement,
+  clearSignalements,
+  formatRelativeTime,
+  loadSignalements,
+  createTerrainSignalement,
+  saveSignalement,
+} from "../lib/signalements";
 
 export const Route = createFileRoute("/terrain")({
   head: () => ({
@@ -22,6 +29,16 @@ function TerrainPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [signalements, setSignalements] = useState<Signalement[]>([]);
+
+  useEffect(() => {
+    setSignalements(loadSignalements().slice(0, 5));
+  }, []);
+
+  const handleClearSignalements = () => {
+    clearSignalements();
+    setSignalements([]);
+  };
 
   const genererFiche = async () => {
     if (!question.trim() || loading) return;
@@ -156,6 +173,68 @@ function TerrainPage() {
               style={{ whiteSpace: "pre-line" }}
             >
               {result}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 rounded-xl border border-border bg-[#F9FAFB] p-5 shadow-sm">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">📡 Derniers signalements terrain</h2>
+              <p className="text-sm text-muted-foreground">
+                Les cinq derniers signalements enregistrés depuis la saisie terrain.
+              </p>
+            </div>
+          </div>
+
+          {signalements.length === 0 ? (
+            <div className="rounded-2xl border border-border bg-white p-4 text-sm text-muted-foreground">
+              Aucun signalement récent — soyez le premier à signaler.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {signalements.map((signalement) => {
+                const isAlert = /perturbé|indisponible/i.test(signalement.statut);
+                return (
+                  <div
+                    key={signalement.id}
+                    className="rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-5"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex items-start gap-3">
+                        <span
+                          className={`mt-1 h-3.5 w-3.5 shrink-0 rounded-full ${
+                            isAlert ? "bg-destructive" : "bg-emerald-500"
+                          }`}
+                        />
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">
+                            {signalement.heure} · {signalement.ligne} · {signalement.arret} · {signalement.retard}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Source : {signalement.source}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {formatRelativeTime(signalement.id)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {signalements.length > 0 && (
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={handleClearSignalements}
+                className="text-sm font-medium text-muted-foreground transition hover:text-foreground"
+              >
+                🗑 Effacer les signalements
+              </button>
             </div>
           )}
         </div>
